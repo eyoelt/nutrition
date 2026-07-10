@@ -1,0 +1,3 @@
+SCRAPERS = [
+    "WHO"
+]
