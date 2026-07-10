@@ -2,6 +2,7 @@
 
 import json
 import time
+import subprocess
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError
 from typing import List, Dict, Optional
@@ -9,105 +10,211 @@ import os
 
 
 class BBCGoodFoodAllScraper:
-    """Scraper for BBC Good Food - Latest 3 Vegetarian Recipes"""
-    
-    def __init__(self, 
-                 max_recipes: int = 11,  # Only 3 recipes
-                 save_progress: bool = True,
-                 progress_file: str = "scrape_progress.json"):
+    """
+    Scraper for BBC Good Food Vegetarian Recipes
+    Streamlit Cloud compatible version
+    """
+
+    def __init__(
+        self,
+        max_recipes: int = 11,
+        save_progress: bool = True,
+        progress_file: str = "scrape_progress.json"
+    ):
         self.max_recipes = max_recipes
         self.save_progress = save_progress
         self.progress_file = progress_file
         self.recipe_urls = []
         self.scraped_recipes = []
-        
+
+
+    def _ensure_playwright_browser(self):
+        """
+        Streamlit Cloud does not automatically download Chromium.
+        This installs the required browser binary.
+        """
+
+        try:
+            print("🔍 Checking Playwright Chromium browser...")
+
+            subprocess.run(
+                ["playwright", "install", "chromium"],
+                check=True
+            )
+
+            print("✅ Chromium browser installed")
+
+        except Exception as e:
+            print(f"❌ Chromium installation failed: {e}")
+            raise
+
+
     def scrape_all(self) -> List[Dict]:
-        """Main method to scrape recipes"""
+        """
+        Main method to scrape recipes
+        """
+
         print("=" * 80)
         print("Starting BBC Good Food scraping - Latest 3 Vegetarian Recipes...")
         print("=" * 80)
-        
-        # Get recipe URLs
+
         self._collect_recipe_urls()
-        
-        # Scrape each recipe
+
         self._scrape_all_recipes()
-        
-        # Save results
+
         self._save_results()
-        
+
         print(f"\n{'=' * 80}")
-        print(f"✅ Scraping complete! Total recipes: {len(self.scraped_recipes)}")
+        print(
+            f"✅ Scraping complete! Total recipes: {len(self.scraped_recipes)}"
+        )
         print("=" * 80)
-        
+
         return self.scraped_recipes
-    
+
+
     def _collect_recipe_urls(self):
-        """Collect the latest 3 recipe URLs from vegetarian category"""
+        """
+        Collect the latest 3 recipe URLs from vegetarian category
+        """
+
         print("\n📚 Collecting latest 3 vegetarian recipes...")
-        
-        category = "vegetarian"
-        category_url = "https://www.bbcgoodfood.com/recipes/collection/vegetarian-recipes"
-        
+
+        category_url = (
+            "https://www.bbcgoodfood.com/"
+            "recipes/collection/vegetarian-recipes"
+        )
+
+
+        # FIX FOR STREAMLIT CLOUD
+        self._ensure_playwright_browser()
+
+
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox"]
+            )
+
             page = browser.new_page()
-            
+
+
             try:
+
                 print(f"  Opening: {category_url}")
-                page.goto(category_url, wait_until="domcontentloaded", timeout=30000)
+
+                page.goto(
+                    category_url,
+                    wait_until="domcontentloaded",
+                    timeout=30000
+                )
+
                 page.wait_for_timeout(3000)
-                
-                # Get all recipe links
-                all_links = page.locator("a[href*='/recipes/']").all()
-                print(f"  Found {len(all_links)} total links on page")
-                
-                # Get first 3 recipe links (they appear in order)
+
+
+                all_links = page.locator(
+                    "a[href*='/recipes/']"
+                ).all()
+
+
+                print(
+                    f"  Found {len(all_links)} total links on page"
+                )
+
+
                 count = 0
+
                 for element in all_links:
+
                     if count >= 11:  # Only get 3
                         break
-                    
+
+
                     try:
-                        href = element.get_attribute("href")
-                        text = element.text_content().strip()
-                        
-                        # Filter for recipe links only (not collections/categories)
-                        if (href and 
-                            "/recipes/" in href and 
-                            "/collection/" not in href and 
-                            "/category/" not in href and
-                            text and 
-                            len(text) > 11):
-                            
+
+                        href = element.get_attribute(
+                            "href"
+                        )
+
+                        text = (
+                            element.text_content()
+                            .strip()
+                        )
+
+
+                        if (
+                            href
+                            and "/recipes/" in href
+                            and "/collection/" not in href
+                            and "/category/" not in href
+                            and text
+                            and len(text) > 11
+                        ):
+
+
                             if not href.startswith("http"):
-                                href = "https://www.bbcgoodfood.com" + href
-                            
+
+                                href = (
+                                    "https://www.bbcgoodfood.com"
+                                    + href
+                                )
+
+
                             if href not in self.recipe_urls:
-                                self.recipe_urls.append(href)
+
+                                self.recipe_urls.append(
+                                    href
+                                )
+
                                 count += 1
-                                print(f"  {count}. {text[:50]}")
-                                print(f"     URL: {href}")
-                                
+
+                                print(
+                                    f"  {count}. {text[:50]}"
+                                )
+                                print(
+                                    f"     URL: {href}"
+                                )
+
+
                     except Exception as e:
-                        print(f"  Error getting link: {e}")
+
+                        print(
+                            f"  Error getting link: {e}"
+                        )
+
                         continue
-                
+
+
                 browser.close()
-                print(f"\n✅ Found {len(self.recipe_urls)} recipes")
-                
+
+
+                print(
+                    f"\n✅ Found {len(self.recipe_urls)} recipes"
+                )
+
+
             except Exception as e:
-                print(f"  ⚠️ Error getting recipes: {e}")
+
+                print(
+                    f"  ⚠️ Error getting recipes: {e}"
+                )
+
                 browser.close()
-    
+
+
     def _scrape_all_recipes(self):
         """Scrape the collected recipe URLs"""
         print(f"\n🍳 Scraping {len(self.recipe_urls)} recipes...")
         
+        # FIX FOR STREAMLIT CLOUD
+        self._ensure_playwright_browser()
+        
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                slow_mo=0
+                slow_mo=0,
+                args=["--no-sandbox"]
             )
             
             context = browser.new_context(
