@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+plotly
+Pillow
+requests
+beautifulsoup4
+playwright
