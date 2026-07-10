@@ -2,6 +2,7 @@
 
 import json
 import time
+import sys
 import subprocess
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError
@@ -26,6 +27,7 @@ class BBCGoodFoodAllScraper:
         self.progress_file = progress_file
         self.recipe_urls = []
         self.scraped_recipes = []
+        self._browser_installed = False
 
 
     def _ensure_playwright_browser(self):
@@ -33,19 +35,41 @@ class BBCGoodFoodAllScraper:
         Streamlit Cloud does not automatically download Chromium.
         This installs the required browser binary.
         """
+        if self._browser_installed:
+            return
 
         try:
             print("🔍 Checking Playwright Chromium browser...")
-
+            
+            # Try to check if browser is already installed
+            try:
+                # This will fail if browser isn't installed
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+                    browser.close()
+                    print("✅ Chromium browser already installed")
+                    self._browser_installed = True
+                    return
+            except Exception:
+                print("⚠️ Chromium not found, installing...")
+            
+            # Install playwright browsers
             subprocess.run(
-                ["playwright", "install", "chromium"],
-                check=True
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                check=True,
+                capture_output=True,
+                text=True
             )
+            
+            print("✅ Chromium browser installed successfully")
+            self._browser_installed = True
 
-            print("✅ Chromium browser installed")
-
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
             print(f"❌ Chromium installation failed: {e}")
+            print(f"Error output: {e.stderr}")
+            raise
+        except Exception as e:
+            print(f"❌ Unexpected error during installation: {e}")
             raise
 
 
@@ -85,20 +109,17 @@ class BBCGoodFoodAllScraper:
             "recipes/collection/vegetarian-recipes"
         )
 
-
         # FIX FOR STREAMLIT CLOUD
         self._ensure_playwright_browser()
-
 
         with sync_playwright() as p:
 
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox"]
+                args=["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
             )
 
             page = browser.new_page()
-
 
             try:
 
@@ -112,16 +133,13 @@ class BBCGoodFoodAllScraper:
 
                 page.wait_for_timeout(3000)
 
-
                 all_links = page.locator(
                     "a[href*='/recipes/']"
                 ).all()
 
-
                 print(
                     f"  Found {len(all_links)} total links on page"
                 )
-
 
                 count = 0
 
@@ -129,7 +147,6 @@ class BBCGoodFoodAllScraper:
 
                     if count >= 11:  # Only get 3
                         break
-
 
                     try:
 
@@ -142,7 +159,6 @@ class BBCGoodFoodAllScraper:
                             .strip()
                         )
 
-
                         if (
                             href
                             and "/recipes/" in href
@@ -152,14 +168,12 @@ class BBCGoodFoodAllScraper:
                             and len(text) > 11
                         ):
 
-
                             if not href.startswith("http"):
 
                                 href = (
                                     "https://www.bbcgoodfood.com"
                                     + href
                                 )
-
 
                             if href not in self.recipe_urls:
 
@@ -176,7 +190,6 @@ class BBCGoodFoodAllScraper:
                                     f"     URL: {href}"
                                 )
 
-
                     except Exception as e:
 
                         print(
@@ -185,14 +198,11 @@ class BBCGoodFoodAllScraper:
 
                         continue
 
-
                 browser.close()
-
 
                 print(
                     f"\n✅ Found {len(self.recipe_urls)} recipes"
                 )
-
 
             except Exception as e:
 
@@ -214,7 +224,7 @@ class BBCGoodFoodAllScraper:
             browser = p.chromium.launch(
                 headless=True,
                 slow_mo=0,
-                args=["--no-sandbox"]
+                args=["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
             )
             
             context = browser.new_context(
